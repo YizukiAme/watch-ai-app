@@ -7,7 +7,7 @@ body {
   background: #000;
   color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: clamp(14px, 2.8vh, 16px); /* OPPO Watch 3 Pro 适配 */
+  font-size: clamp(14px, 2.8vh, 16px);
   line-height: 1.4;
   -webkit-tap-highlight-color: transparent;
 }
@@ -46,7 +46,6 @@ body {
 }
 #history-controls.hidden{ transform:translateY(-140%); opacity:0; }
 
-/* Round buttons (label too) */
 .pill-btn{
   display:inline-flex; align-items:center; justify-content:center;
   background:var(--surface); color:var(--text);
@@ -60,12 +59,12 @@ body {
 #auto-save-toggle + label.pill-btn{ background:var(--surface); color:var(--text-2); }
 #auto-save-toggle:checked + label.pill-btn{ background:var(--accent); color:#fff; }
 
-/* Chat window */
+/* Chat */
 #chat-window{
   flex:1 1 auto; overflow-y:auto; padding:8px 4px;
   display:flex; flex-direction:column; gap:8px; overscroll-behavior:contain;
 }
-#chat-window.has-compose{ padding-bottom:44px; } /* only when Type visible */
+#chat-window.has-compose{ padding-bottom:44px; }
 #chat-window::-webkit-scrollbar{ width:2px; }
 #chat-window::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.25); border-radius:2px; }
 
@@ -80,7 +79,7 @@ body {
 .message p{ margin:.3em 0; }
 .message code{ background:rgba(255,255,255,.08); padding:0 4px; border-radius:6px; }
 
-/* Bottom Type button */
+/* Type button */
 #compose-btn{
   position:fixed; left:50%; transform:translateX(-50%);
   bottom:calc(env(safe-area-inset-bottom,0) + 10px);
@@ -88,7 +87,7 @@ body {
   background:var(--accent); color:#fff; font-size:15px; line-height:1;
   box-shadow:0 4px 12px rgba(0,0,0,.35); cursor:pointer;
   transition: opacity var(--transition), transform var(--transition);
-  z-index: 30; /* 低于浮层 */
+  z-index: 30;
 }
 #compose-btn.hidden{ opacity:0; transform:translate(-50%, 10px); pointer-events:none; }
 
@@ -96,14 +95,13 @@ body {
 #input-modal, #list-modal{
   position:fixed; inset:0; display:grid; place-items:center;
   transition: opacity var(--transition), visibility var(--transition);
-  z-index: 50; /* 强制覆盖一切 */
+  z-index: 50;
 }
 .hidden{ opacity:0; visibility:hidden; pointer-events:none; }
 
 .modal-backdrop{
   position:absolute; inset:0;
   background:linear-gradient(180deg, rgba(8,10,14,.55), rgba(8,10,14,.65));
-  /* 有些表不支持 backdrop-filter，没关系，视觉只是少点虚化 */
   backdrop-filter: blur(10px) saturate(120%);
 }
 
@@ -119,38 +117,29 @@ body {
   transition: transform var(--transition), opacity var(--transition);
 }
 #input-modal.hidden .modal-content,
-#list-modal.hidden .modal-content{
-  transform: scale(.98);
-  opacity:.98;
-}
+#list-modal.hidden .modal-content{ transform: scale(.98); opacity:.98; }
 
-/* Title bar */
 .modal-titlebar{
   display:flex; align-items:center; justify-content:space-between;
   margin-bottom:8px;
 }
 .modal-title{ font-weight:700; }
 
-/* Input fullscreen */
 .input-fullscreen{ display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
 .modal-body{ min-height:0; display:flex; flex-direction:column; }
 #modal-textarea{
-  flex:1 1 auto; min-height:0;
-  width:100%; padding:10px 12px; border-radius:12px;
+  flex:1 1 auto; min-height:0; width:100%; padding:10px 12px; border-radius:12px;
   border:1px solid rgba(255,255,255,.18);
   background:rgba(0,0,0,.35);
   color:#fff; font-size:1rem; resize:none;
   backdrop-filter: blur(6px);
 }
 .modal-actions{ display:flex; gap:8px; }
-.primary-btn, .ghost-btn{
-  flex:1 1 auto; height:36px; border-radius:10px; border:0; font-weight:600;
-}
+.primary-btn, .ghost-btn{ flex:1 1 auto; height:36px; border-radius:10px; border:0; font-weight:600; }
 .primary-btn{ background:var(--accent); color:#fff; }
 .ghost-btn{ background:rgba(255,255,255,.08); color:#ddd; }
 .small{ height:30px; font-size:.9rem; }
 
-/* List fullscreen */
 .list-fullscreen{ display:grid; grid-template-rows:auto 1fr; gap:8px; }
 .list-body{ overflow:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px; }
 .list-row{ display:grid; grid-template-columns:1fr auto; gap:6px; }
@@ -170,5 +159,4 @@ body {
 }
 .list-empty{ text-align:center; color:var(--text-2); padding:16px 0; }
 
-/* Lock scroll when modal open */
 body.modal-open{ overflow:hidden; }

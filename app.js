@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const generationConfig = { temperature: 1.0, maxOutputTokens: 65536 };
   const thinkingConfig   = { thinkingBudget: 32768 };
 
-  // --- 安全的 Markdown 渲染 ---
+  // --- 安全 Markdown 渲染（软依赖） ---
   const escapeHTML = (s='') =>
     s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
@@ -69,8 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return base.slice(0, limit);
   };
 
+  // ===== 显隐与弹窗的“笨办法”管控，兼容怪浏览器 =====
+  const modalState = { openCount: 0, openedAt: 0 };
   const sheetsOpen = () => !inputModal.classList.contains('hidden') || !listModal.classList.contains('hidden');
-  const isAtBottom = () => Math.abs(chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight) < 4;
+
+  const isAtBottom = () => {
+    const sh = chatWindow.scrollHeight || 0;
+    const st = chatWindow.scrollTop || 0;
+    const ch = chatWindow.clientHeight || 0;
+    // 宽容 12px 容差，适配手表布局抖动
+    return Math.abs(sh - st - ch) < 12;
+  };
 
   function updateComposeVisibility() {
     const show = isAtBottom() && !sheetsOpen();
@@ -78,21 +87,31 @@ document.addEventListener('DOMContentLoaded', () => {
     chatWindow.classList.toggle('has-compose', show); // 只加内边距，不制造底栏
   }
 
-  // --- 全屏浮层：防抖关闭（解决手表“瞬开瞬关”） ---
-  let lastModalOpenAt = 0;
   function openSheet(el) {
-    lastModalOpenAt = Date.now();
+    modalState.openCount++;
+    modalState.openedAt = Date.now();
     el.classList.remove('hidden');
     document.body.classList.add('modal-open');
     updateComposeVisibility();
   }
   function closeSheet(el) {
     el.classList.add('hidden');
+    modalState.openCount = Math.max(0, modalState.openCount - 1);
     if (!sheetsOpen()) document.body.classList.remove('modal-open');
     updateComposeVisibility();
   }
 
-  // --- 滚动联动 ---
+  // 背板点击只在“点到背板本身”时触发，且打开后 300ms 内无效
+  document.querySelectorAll('.modal-backdrop').forEach((bk) => {
+    bk.addEventListener('click', (e) => {
+      if (e.target !== bk) return;
+      if (Date.now() - modalState.openedAt < 300) return;
+      const parent = bk.closest('[role="dialog"]');
+      if (parent) closeSheet(parent);
+    });
+  });
+
+  // ===== 滚动与视口变化 =====
   chatWindow.addEventListener('scroll', () => {
     const scrollTop = chatWindow.scrollTop;
     if (scrollTop > lastScrollTop && scrollTop > 30) historyControls.classList.add('hidden');
@@ -101,10 +120,25 @@ document.addEventListener('DOMContentLoaded', () => {
     updateComposeVisibility();
   }, { passive: true });
 
-  // --- 输入浮层 ---
-  const openInput = (e) => { e?.preventDefault?.(); openSheet(inputModal); modalTextarea.focus(); };
-  composeBtn.addEventListener('pointerdown', openInput);
-  composeBtn.addEventListener('click', openInput);
+  // 视口变化（手表上地址栏/系统条改变高度时）
+  window.addEventListener('resize', () => {
+    // 强制一次微滚，触发滚动计算
+    chatWindow.scrollTop = chatWindow.scrollTop + 1;
+    chatWindow.scrollTop = chatWindow.scrollTop - 1;
+    updateComposeVisibility();
+  });
+
+  // 内容变更时也重算（欢迎语、回复等）。适配奇怪内核不触发 resize 的情况
+  const mo = new MutationObserver(() => updateComposeVisibility());
+  mo.observe(chatWindow, { childList: true, subtree: false });
+
+  // ===== 输入浮层 =====
+  composeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    openSheet(inputModal);
+    // 某些设备需要下一帧再 focus
+    requestAnimationFrame(() => modalTextarea && modalTextarea.focus());
+  });
 
   modalSendBtn.addEventListener('click', () => {
     const text = modalTextarea.value.trim();
@@ -118,30 +152,29 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   modalCloseBtn.addEventListener('click', () => closeSheet(inputModal));
 
-  // --- 历史浮层 ---
-  const openList = async (e) => {
-    e?.preventDefault?.();
-    await loadConversationList();
-    await loadIndexMap();
-    renderConversationList();
+  // ===== 历史浮层：先开窗再异步加载，避免“等网络期间以为没反应” =====
+  loadChatBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
     openSheet(listModal);
-  };
-  loadChatBtn.addEventListener('pointerdown', openList);
-  loadChatBtn.addEventListener('click', openList);
-
+    renderConversationList(true); // 先画个 loading
+    try {
+      await loadConversationList();
+      await loadIndexMap();
+    } finally {
+      renderConversationList(false);
+    }
+  });
   listCloseBtn.addEventListener('click', () => closeSheet(listModal));
 
-  // 背板点击：打开后 300ms 内的点按忽略，防止“瞬开瞬关”
-  document.querySelectorAll('.modal-backdrop').forEach((bk) => {
-    bk.addEventListener('click', (e) => {
-      if (Date.now() - lastModalOpenAt < 300) return;
-      const parent = e.target.closest('[role="dialog"]');
-      if (parent) closeSheet(parent);
-    });
-  });
-
-  function renderConversationList() {
+  function renderConversationList(loading=false) {
     conversationList.innerHTML = '';
+    if (loading) {
+      const ld = document.createElement('div');
+      ld.className = 'list-empty';
+      ld.textContent = '载入中…';
+      conversationList.appendChild(ld);
+      return;
+    }
     if (!bucketKeys.length) {
       const empty = document.createElement('div');
       empty.className = 'list-empty';
@@ -173,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await deleteConversation(k); // 需要 STS 有 cos:DeleteObject
         await loadConversationList();
         await loadIndexMap();
-        renderConversationList();
+        renderConversationList(false);
       });
 
       row.appendChild(item);
@@ -182,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- COS 交互 ---
+  // ===== COS 交互 =====
   async function main() {
     try {
       const credsResponse = await fetch('/api/cos-credentials');
@@ -206,9 +239,8 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadIndexMap();
       startNewChat();
     } catch (error) {
-      // 即使失败也渲染错误提示，避免空屏
       addMessage('System', `**Error:** 初始化失败: ${error.message}`);
-      startNewChat(); // 仍然给出欢迎语，保持可用
+      startNewChat(); // 也要有欢迎语，别空屏
     }
   }
 
@@ -300,12 +332,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function startNewChat() {
-    // 欢迎语必须渲染，即使 marked 失效也走兜底渲染
     chatWindow.innerHTML = '';
     conversationHistory = [];
     currentConversationKey = null;
     addMessage('Gemini', '你好, NyAme。我是 Gemini，准备好开始了吗？');
-    updateComposeVisibility();
+    // 确保欢迎语后也会显示 Type
+    setTimeout(updateComposeVisibility, 0);
   }
 
   function addMessage(sender, text, addToHistory = true) {
@@ -360,9 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 顶部按钮
-  const safeStart = (e) => { e?.preventDefault?.(); startNewChat(); };
-  newChatBtn.addEventListener('pointerdown', safeStart);
-  newChatBtn.addEventListener('click', safeStart);
+  newChatBtn.addEventListener('click', (e) => { e.preventDefault(); startNewChat(); });
 
   // 启动
   main();
