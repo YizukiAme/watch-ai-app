@@ -6,12 +6,11 @@
   <title>Watch AI</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body data-page="index">
   <div id="app">
-    <!-- 顶部：N / L / S 居中 -->
     <div id="history-controls" role="toolbar" aria-label="History Controls">
       <button id="new-chat-btn" class="pill-btn" title="New Chat" aria-label="New Chat">N</button>
-      <button id="load-chat-btn" class="pill-btn" title="Load Conversation" aria-haspopup="dialog" aria-controls="list-modal">L</button>
+      <a id="load-chat-link" class="pill-btn" href="history.html" title="History" aria-label="History">L</a>
       <div class="save-toggle">
         <input type="checkbox" id="auto-save-toggle" checked aria-label="Auto Save" />
         <label for="auto-save-toggle" class="pill-btn" title="Auto-Save">S</label>
@@ -20,41 +19,10 @@
 
     <div id="chat-window" aria-live="polite"></div>
 
-    <!-- 底部：仅滚到最底部才显示 -->
-    <button id="compose-btn" title="输入" aria-label="输入">Type</button>
+    <!-- 不用浮窗，直接跳转到输入页 -->
+    <a id="compose-btn" class="compose-link" href="input.html" title="输入" aria-label="输入">Type</a>
   </div>
 
-  <!-- 全屏输入浮层 -->
-  <div id="input-modal" class="hidden" role="dialog" aria-modal="true" aria-label="输入">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content input-fullscreen">
-      <div class="modal-titlebar">
-        <div class="modal-title">新消息</div>
-        <button id="modal-close-btn" class="ghost-btn small" title="关闭">关闭</button>
-      </div>
-      <div class="modal-body">
-        <textarea id="modal-textarea" placeholder="输入..." autocomplete="off" autocapitalize="none"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button id="modal-cancel-btn" class="ghost-btn" title="取消">取消</button>
-        <button id="modal-send-btn" class="primary-btn" title="发送">发送</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 全屏历史浮层 -->
-  <div id="list-modal" class="hidden" role="dialog" aria-modal="true" aria-label="历史对话">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content list-fullscreen">
-      <div class="modal-titlebar">
-        <div class="modal-title">历史对话</div>
-        <button id="list-close-btn" class="ghost-btn small">关闭</button>
-      </div>
-      <div id="conversation-list" class="list-body"></div>
-    </div>
-  </div>
-
-  <!-- CDN 尽量放尾部，避免阻塞 -->
   <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="app.js"></script>
