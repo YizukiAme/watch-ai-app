@@ -1,163 +1,160 @@
 /* --- 1. 全局样式与自适应单位 --- */
 :root {
-    /* 核心设计变量 */
-    --background-color: #000000; /* 为OLED屏幕使用纯黑以省电 */
-    --surface-color: #1c1c1e;   /* iOS风格的深灰色 */
+    --background-color: #000000;
+    --surface-color: #1c1c1e;
     --primary-text-color: #ffffff;
     --secondary-text-color: #8e8e93;
-    --accent-color: #0a84ff;     /* iOS风格的亮蓝色 */
+    --accent-color: #0a84ff;
+    --accent-color-translucent: rgba(10, 132, 255, 0.5); /* 半透明的蓝色 */
     --gemini-bubble-color: #2c2c2e;
-
-    /* 布局与尺寸变量 */
-    --safe-area-padding: 12px; /* 关键！为圆角屏幕留出足够的安全边距 */
-    --base-font-size: 16px;    /* 调整基础字号，手表上需要更大的字体 */
-    --border-radius: 20px;     /* 更大的圆角，匹配手表硬件的圆润感 */
-
-    --transition-speed: 0.2s;
+    --safe-area-padding: 12px;
+    --base-font-size: 16px;
+    --border-radius: 20px;
+    --transition-speed: 0.3s;
 }
-
-/* 基础重置与字体设置 */
-body, html {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    background-color: var(--background-color);
-    color: var(--primary-text-color);
+body, html { /* (保持不变) */
+    margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden;
+    background-color: var(--background-color); color: var(--primary-text-color);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: var(--base-font-size);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale; /* 开启字体平滑 */
 }
 
 /* --- 2. 根布局优化 --- */
-#app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    padding: var(--safe-area-padding);
-    box-sizing: border-box; /* 让 padding 不会撑大容器 */
+#app { /* (保持不变) */
+    display: flex; flex-direction: column; height: 100vh; width: 100vw;
+    padding: var(--safe-area-padding); box-sizing: border-box;
 }
 
-/* --- 3. 顶部控制区域 (更紧凑) --- */
+/* --- 3. 动态顶部控制栏 --- */
 #history-controls {
+    display: flex; align-items: center; gap: 10px;
     padding-bottom: var(--safe-area-padding);
     border-bottom: 1px solid var(--surface-color);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0; /* 防止此区域被压缩 */
+    flex-shrink: 0;
+    /* 核心：添加过渡效果，为动态隐藏做准备 */
+    transition: transform var(--transition-speed) ease-in-out, opacity var(--transition-speed);
+}
+/* 当顶部栏需要隐藏时，应用这个 class */
+#history-controls.hidden {
+    transform: translateY(-150%);
+    opacity: 0;
 }
 
-#history-controls button, #history-controls select {
+/* 简化后的图标按钮 */
+#history-controls button {
     background-color: var(--surface-color);
     color: var(--primary-text-color);
     border: none;
-    padding: 0.5rem 0.75rem; /* 使用rem单位，使其随字体大小缩放 */
-    border-radius: var(--border-radius);
-    font-size: 0.875rem; /* 14px (相对于16px) */
-    min-height: 36px; /* 保证足够的点击高度 */
-    box-sizing: border-box;
+    border-radius: 50%; /* 圆形按钮 */
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    line-height: 36px; /* 垂直居中 */
+    text-align: center;
     cursor: pointer;
     transition: background-color var(--transition-speed);
 }
-#history-controls select { flex-grow: 1; }
-.save-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    color: var(--secondary-text-color);
+/* 视觉辅助类，用于隐藏真正的 <select> */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
 }
 
-/* --- 4. 聊天窗口 (最大化利用空间) --- */
-#chat-window {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 0.75rem 0.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+/* 自动保存开关的样式 */
+.save-toggle label {
+    display: block; width: 36px; height: 36px; line-height: 36px; text-align: center;
+    background-color: var(--surface-color); color: var(--secondary-text-color);
+    border-radius: 50%; cursor: pointer; transition: all var(--transition-speed);
+    font-weight: bold;
 }
-
-#chat-window::-webkit-scrollbar { width: 3px; }
-#chat-window::-webkit-scrollbar-track { background: transparent; }
-#chat-window::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-}
-
-.message {
-    padding: 0.6rem 0.9rem;
-    border-radius: var(--border-radius);
-    line-height: 1.4;
-    max-width: 85%;
-    word-wrap: break-word;
-    opacity: 0;
-    transform: scale(0.95);
-    animation: fadeIn 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
-}
-
-@keyframes fadeIn {
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.user {
+/* 核心：当 checkbox 被选中时，改变 label 的样式 */
+#auto-save-toggle:checked + label {
     background-color: var(--accent-color);
     color: white;
-    align-self: flex-end;
-    border-bottom-right-radius: 6px;
 }
 
-.gemini, .system {
-    background-color: var(--gemini-bubble-color);
-    align-self: flex-start;
-    border-bottom-left-radius: 6px;
+/* --- 4. 聊天窗口 --- */
+#chat-window { /* (基本保持不变) */
+    flex-grow: 1; overflow-y: auto; padding: 0.75rem 0.25rem;
+    display: flex; flex-direction: column; gap: 0.75rem;
 }
+/* (滚动条和消息气泡样式保持不变) */
+#chat-window::-webkit-scrollbar { width: 3px; }
+#chat-window::-webkit-scrollbar-track { background: transparent; }
+#chat-window::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+.message { padding: 0.6rem 0.9rem; border-radius: var(--border-radius); line-height: 1.4; max-width: 85%; word-wrap: break-word; animation: fadeIn 0.3s forwards; opacity: 0; transform: scale(0.95); }
+@keyframes fadeIn { to { opacity: 1; transform: scale(1); } }
+.user { background-color: var(--accent-color); color: white; align-self: flex-end; border-bottom-right-radius: 6px; }
+.gemini, .system { background-color: var(--gemini-bubble-color); align-self: flex-start; border-bottom-left-radius: 6px; }
 .system { background-color: #5c2b2b; width: 100%; max-width: 100%; box-sizing: border-box; }
 
-/* --- 5. 底部输入区域 (优化触摸) --- */
-#input-form {
-    display: flex;
-    gap: 8px;
-    padding-top: var(--safe-area-padding);
-    border-top: 1px solid var(--surface-color);
-    flex-shrink: 0; /* 防止此区域被压缩 */
-}
-
-#message-input {
-    flex-grow: 1;
-    background: var(--surface-color);
-    border: 1px solid transparent;
-    color: var(--primary-text-color);
-    padding: 0.6rem 0.9rem;
-    border-radius: var(--border-radius);
-    font-size: 1rem; /* 16px (相对于16px) */
-    min-height: 44px; /* 保证足够的点击高度 */
-    box-sizing: border-box;
-    transition: border-color var(--transition-speed);
-}
-#message-input:focus {
-    outline: none;
-    border-color: var(--accent-color);
-}
-
-#input-form button {
-    background: var(--accent-color);
+/* --- 5. 悬浮操作按钮 (FAB) --- */
+#fab-input-btn {
+    position: fixed;
+    bottom: var(--safe-area-padding);
+    right: var(--safe-area-padding);
+    width: 50px;
+    height: 50px;
+    background-color: var(--accent-color);
     color: white;
     border: none;
-    border-radius: var(--border-radius);
-    font-size: 1.25rem;
+    border-radius: 50%;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     cursor: pointer;
-    flex-shrink: 0;
-    width: 44px; /* 固定宽度，形成一个方形按钮 */
-    height: 44px;
-    transition: transform 0.1s;
+    transition: transform 0.2s;
 }
-#input-form button:active { transform: scale(0.9); }
+#fab-input-btn:active { transform: scale(0.9); }
+
+/* --- 6. 全屏输入模态框 --- */
+#input-modal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity var(--transition-speed), visibility var(--transition-speed);
+}
+#input-modal.hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+.modal-backdrop { /* 半透明背景 */
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+}
+.modal-content {
+    position: relative;
+    z-index: 1;
+    width: calc(100% - var(--safe-area-padding) * 2);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+#modal-textarea {
+    background-color: var(--surface-color);
+    color: var(--primary-text-color);
+    border: 1px solid var(--secondary-text-color);
+    border-radius: 12px;
+    height: 150px;
+    font-size: 1rem;
+    padding: 10px;
+    resize: none;
+}
+#modal-send-btn {
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: bold;
+}

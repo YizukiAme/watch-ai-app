@@ -9,18 +9,26 @@
 <body>
     <div id="app">
         <div id="history-controls">
-            <button id="new-chat-btn">New Chat</button>
-            <select id="conversation-selector" title="选择对话"></select>
+            <button id="new-chat-btn" title="New Chat">+</button>
+            <button id="load-chat-btn" title="Load Conversation">📂</button>
             <div class="save-toggle">
                 <input type="checkbox" id="auto-save-toggle" checked>
-                <label for="auto-save-toggle">Auto-Save</label>
+                <label for="auto-save-toggle" title="Auto-Save">S</label>
             </div>
+            <select id="conversation-selector" class="visually-hidden"></select>
         </div>
+
         <div id="chat-window"></div>
-        <form id="input-form">
-            <input type="text" id="message-input" placeholder="输入..." autocomplete="off">
-            <button type="submit">▲</button>
-        </form>
+
+        <button id="fab-input-btn" title="Double-click to type">✏️</button>
+    </div>
+
+    <div id="input-modal" class="hidden">
+        <div class="modal-content">
+            <textarea id="modal-textarea" placeholder="输入..."></textarea>
+            <button id="modal-send-btn">发送</button>
+        </div>
+        <div class="modal-backdrop"></div>
     </div>
 
     <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>

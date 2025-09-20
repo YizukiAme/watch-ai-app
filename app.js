@@ -1,78 +1,79 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const autoSaveToggle = document.getElementById('auto-save-toggle');
+    // --- DOM 元素 ---
+    const historyControls = document.getElementById('history-controls');
     const chatWindow = document.getElementById('chat-window');
-    const inputForm = document.getElementById('input-form');
-    const messageInput = document.getElementById('message-input');
     const conversationSelector = document.getElementById('conversation-selector');
     const newChatBtn = document.getElementById('new-chat-btn');
+    const loadChatBtn = document.getElementById('load-chat-btn');
+    const autoSaveToggle = document.getElementById('auto-save-toggle');
+    
+    // 新增的UI元素
+    const fabInputBtn = document.getElementById('fab-input-btn');
+    const inputModal = document.getElementById('input-modal');
+    const modalTextarea = document.getElementById('modal-textarea');
+    const modalSendBtn = document.getElementById('modal-send-btn');
+    const modalBackdrop = document.querySelector('.modal-backdrop');
 
-    // --- State Management & Configuration ---
+    // --- 状态管理与配置 ---
     let cos, cosConfig;
     let conversationHistory = [];
     let currentConversationKey = null;
+    let lastScrollTop = 0; // 用于滚动检测
 
-    // Configure the generation parameters
+    // 大模型配置
     const generationConfig = {
         temperature: 1.0,
-        maxOutputTokens: 65536, // Increased for the more powerful model
+        maxOutputTokens: 65536,
     };
-
-    // Configure the new thinking parameters
     const thinkingConfig = {
-        thinkingBudget: 32768, 
+        thinkingBudget: 32768,
     };
 
-    // The new, configurable way to call the AI
-    async function getGeminiResponse() {
-        const response = await fetch('/api/generate-text', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                conversationHistory,
-                generationConfig: generationConfig,
-                thinkingConfig: thinkingConfig // Send the new config to the backend
-            }),
-        });
+    // --- 核心交互逻辑 ---
 
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(`API Error: ${data.error?.message || 'Unknown error'}`);
+    // 1. 根据滚动自动隐藏/显示顶部控制栏
+    chatWindow.addEventListener('scroll', () => {
+        let scrollTop = chatWindow.scrollTop;
+        // 向下滚动超过50px时隐藏
+        if (scrollTop > lastScrollTop && scrollTop > 50) {
+            historyControls.classList.add('hidden');
+        } else { // 向上滚动时显示
+            historyControls.classList.remove('hidden');
         }
-        return data.text;
+        lastScrollTop = scrollTop <= 0 ? 0 : scrollTop; // 处理滚动到顶部的情况
+    });
+
+    // 2. 悬浮按钮与模态框交互
+    fabInputBtn.addEventListener('dblclick', () => {
+        inputModal.classList.remove('hidden');
+        modalTextarea.focus(); // 自动聚焦到输入框
+    });
+    
+    function hideModal() {
+        inputModal.classList.add('hidden');
+        modalTextarea.value = ''; // 关闭时清空输入框
     }
 
-    inputForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const userMessage = messageInput.value.trim();
-        if (!userMessage) return;
-
-        addMessage('NyAme', userMessage);
-        messageInput.value = '';
-        messageInput.disabled = true;
-
-        const thinkingMessage = document.createElement('div');
-        thinkingMessage.classList.add('message', 'gemini');
-        thinkingMessage.innerText = '...';
-        chatWindow.appendChild(thinkingMessage);
-        chatWindow.scrollTop = chatWindow.scrollHeight;
-
-        try {
-            const geminiResponseText = await getGeminiResponse();
-            chatWindow.removeChild(thinkingMessage);
-            addMessage('Gemini', geminiResponseText);
-
-            if (autoSaveToggle.checked) {
-                await saveConversation();
-            }
-
-        } catch (error) {
-            chatWindow.removeChild(thinkingMessage);
-            addMessage('System', `**Error:** ${error.message}`);
-        } finally {
-            messageInput.disabled = false;
-            messageInput.focus();
+    modalSendBtn.addEventListener('click', () => {
+        const userMessage = modalTextarea.value.trim();
+        if (userMessage) {
+            sendMessage(userMessage);
         }
+        hideModal();
     });
+    
+    modalBackdrop.addEventListener('click', hideModal); // 点击模态框背景关闭
+
+    // 3. 自定义按钮触发隐藏的<select>下拉框
+    loadChatBtn.addEventListener('click', () => {
+        conversationSelector.click();
+    });
+
+    // --- 主要功能函数 ---
+
+    /**
+     * 应用主入口函数
+     */
     async function main() {
         try {
             const credsResponse = await fetch('/api/cos-credentials');
@@ -97,6 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * 从COS加载对话列表并填充下拉框
+     */
     async function loadConversationList() {
         if (!cos) return;
         const data = await cos.getBucket({ ...cosConfig, Prefix: '' });
@@ -109,6 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /**
+     * 从COS加载指定的对话历史
+     * @param {string} key - 对话文件的key
+     */
     async function loadConversation(key) {
         if (!cos || !key) return;
         try {
@@ -124,18 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * 将当前对话历史保存到COS
+     */
     async function saveConversation() {
         if (!cos || conversationHistory.length < 2) return;
         if (!currentConversationKey) {
             currentConversationKey = `${Date.now()}.json`;
         }
         try {
-            await cos.putObject({
-                ...cosConfig,
-                Key: currentConversationKey,
-                Body: JSON.stringify(conversationHistory),
-            });
-            // Check if the option already exists before reloading the entire list
+            await cos.putObject({ ...cosConfig, Key: currentConversationKey, Body: JSON.stringify(conversationHistory) });
+            // 检查下拉框中是否已存在该选项，避免重复加载
             let exists = false;
             for(let i=0; i<conversationSelector.options.length; i++){
                 if(conversationSelector.options[i].value === currentConversationKey) {
@@ -152,15 +159,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * 开始一个新对话
+     */
     function startNewChat() {
         chatWindow.innerHTML = '';
         conversationHistory = [];
         currentConversationKey = null;
         conversationSelector.value = "";
-        const welcomeMessage = "你好, NyAme。";
+        const welcomeMessage = "你好, NyAme。我是 Gemini，准备好开始了吗？";
         addMessage('Gemini', welcomeMessage);
     }
 
+    /**
+     * 向聊天窗口添加消息
+     * @param {string} sender - 'NyAme', 'Gemini', 或 'System'
+     * @param {string} text - 消息内容
+     * @param {boolean} addToHistory - 是否将消息添加到历史记录中
+     */
     function addMessage(sender, text, addToHistory = true) {
         const senderRole = sender.toLowerCase() === 'nyame' ? 'user' : 'model';
         if (addToHistory && sender !== 'System') {
@@ -173,8 +189,56 @@ document.addEventListener('DOMContentLoaded', () => {
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 
+    /**
+     * 调用后端API以获取Gemini的回复
+     * @returns {Promise<string>} - Gemini返回的文本
+     */
+    async function getGeminiResponse() {
+        const response = await fetch('/api/generate-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversationHistory, generationConfig, thinkingConfig }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(`API Error: ${data.error?.message || 'Unknown error'}`);
+        }
+        return data.text;
+    }
+
+    /**
+     * 核心的消息发送流程
+     * @param {string} userMessage - 用户输入的消息
+     */
+    async function sendMessage(userMessage) {
+        addMessage('NyAme', userMessage);
+        
+        // 显示"思考中"的提示
+        const thinkingMessage = document.createElement('div');
+        thinkingMessage.classList.add('message', 'gemini');
+        thinkingMessage.innerText = '...';
+        chatWindow.appendChild(thinkingMessage);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+        try {
+            const geminiResponseText = await getGeminiResponse();
+            chatWindow.removeChild(thinkingMessage);
+            addMessage('Gemini', geminiResponseText);
+            
+            // 根据开关状态决定是否保存
+            if (autoSaveToggle.checked) {
+                await saveConversation();
+            }
+        } catch (error) {
+            chatWindow.removeChild(thinkingMessage);
+            addMessage('System', `**Error:** ${error.message}`);
+        }
+    }
+
+    // --- 绑定基础事件监听器 ---
     conversationSelector.addEventListener('change', (e) => loadConversation(e.target.value));
     newChatBtn.addEventListener('click', startNewChat);
 
+    // --- 启动应用 ---
     main();
 });
