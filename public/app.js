@@ -3,8 +3,10 @@
   const PAGE = document.body?.dataset?.page || 'index';
 
   // ------- 配置 -------
-  const USE_STREAM = true; // 能流就流，失败自动回退
+  let USE_STREAM = true; // 能流就流，失败自动回退；#nostream 可禁用
   const STREAM_API = '/api/generate-text-stream';
+  const FIRST_CHUNK_TIMEOUT_MS = 8000;
+  const STALL_TIMEOUT_MS = 8000;
 
   // ------- 公共状态与工具 -------
   let cos, cosConfig;
@@ -17,15 +19,20 @@
   const generationConfig = { temperature: 1.0, maxOutputTokens: 65536 };
   const thinkingConfig   = { thinkingBudget: 32768 };
 
-  // ---- 安全转义 ----
-  const esc = (s='') => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  // ---- 本地存储键 ----
+  const LS_PENDING_INPUT = 'watchai_pending_input'; // 草稿内容
+  const LS_PENDING_LOAD  = 'watchai_pending_load';  // 预留
+  const LS_CUR_HIST      = 'watchai_cur_history';
+  const LS_CUR_KEY       = 'watchai_cur_key';
+  const LS_SEND_FLAG     = 'watchai_intent_send';   // 新增：显式发送意图
 
-  // ---- 兜底 Markdown 渲染器（不依赖任何库）----
+  // ---- 小工具 ----
+  const esc = (s='') => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   function miniMarkdown(input){
     let txt = String(input || '');
     txt = esc(txt);
-    txt = txt.replace(/```([\s\S]*?)```/g, (_, code)=>'<pre><code>'+code+'</code></pre>');
-    txt = txt.replace(/`([^`]+?)`/g, (_, code)=>'<code>'+code+'</code>');
+    txt = txt.replace(/```([\s\S]*?)```/g, (_, c)=>'<pre><code>'+c+'</code></pre>');
+    txt = txt.replace(/`([^`]+?)`/g, (_, c)=>'<code>'+c+'</code>');
     txt = txt.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     txt = txt.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>');
     txt = txt
@@ -48,8 +55,6 @@
     }
     closeLists(); closeBQ(); return out.join('');
   }
-
-  // ---- Markdown & KaTeX：优先 marked，失败走兜底 ----
   function renderMarkdown(text){
     try{
       const m = window.marked;
@@ -74,8 +79,6 @@
       }catch{}
     }
   }
-
-  // ---- 其他工具 ----
   const fmtTime = (ms)=>{ try{return new Date(parseInt(String(ms),10)).toLocaleString();}catch{return ms;} };
   function sanitize(t){
     t = String(t||'');
@@ -90,12 +93,6 @@
   }
   const b64e=(s)=>{ try { return btoa(unescape(encodeURIComponent(s))); } catch { return btoa(s); } };
   const b64d=(s)=>{ try { return decodeURIComponent(escape(atob(s))); } catch { try { return atob(s); } catch { return ''; } } };
-
-  // ---- storage keys ----
-  const LS_PENDING_INPUT = 'watchai_pending_input';
-  const LS_PENDING_LOAD  = 'watchai_pending_load';
-  const LS_CUR_HIST      = 'watchai_cur_history';
-  const LS_CUR_KEY       = 'watchai_cur_key';
 
   function saveBufferLS(){ try{ localStorage.setItem(LS_CUR_HIST, JSON.stringify(conversationHistory||[])); localStorage.setItem(LS_CUR_KEY, currentConversationKey||''); }catch{} }
   function loadBufferLS(){ try{ const h=JSON.parse(localStorage.getItem(LS_CUR_HIST)||'[]'); const k=localStorage.getItem(LS_CUR_KEY)||''; conversationHistory=Array.isArray(h)?h:[]; currentConversationKey=k||null; }catch{ conversationHistory=[]; currentConversationKey=null; } }
@@ -166,9 +163,8 @@
     return data.text || '';
   }
 
-  // --- Streaming ---
+  // --- Streaming 工具 ---
   function parseGeminiSSEChunk(acc, chunkText){
-    // Google 返回的是多段 `data: {json}\n\n`
     const parts = chunkText.split('\n\n');
     for (const p of parts){
       const line = p.trim();
@@ -177,16 +173,14 @@
       if (json === '[DONE]') continue;
       try{
         const obj = JSON.parse(json);
-        // 把所有 obj 里的 "text" 字段拼出来（鲁棒点）
         const texts = [];
         (function walk(o){
           if (!o || typeof o!=='object') return;
           if (typeof o.text === 'string') texts.push(o.text);
-          for (const k in o){ if (o.hasOwnProperty(k)) walk(o[k]); }
+          for (const k in o){ if (Object.prototype.hasOwnProperty.call(o,k)) walk(o[k]); }
         })(obj);
         const delta = texts.join('');
         if (delta){
-          // 处理“整段覆盖”的情况：如果是累积片段，直接替换；否则追加
           if (delta.startsWith(acc.all)) acc.all = delta;
           else acc.all += delta;
         }
@@ -195,28 +189,44 @@
     return acc;
   }
 
-  async function streamModelReply(){
+  async function streamModelReplyWithTimeout(onDelta){
+    const hash = (location.hash || '').toLowerCase();
+    if (hash.includes('nostream') || !('ReadableStream' in window)) {
+      throw new Error('stream_disabled');
+    }
+    const controller = new AbortController();
     const res = await fetch(STREAM_API, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ conversationHistory, generationConfig, thinkingConfig }),
+      signal: controller.signal
     });
     if (!res.ok || !res.body) throw new Error('Stream API error');
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let acc = { all: '' };
-    let done, value;
-    const pump = async (onDelta)=>{
+    let gotFirst = false;
+    let lastEmitTs = Date.now();
+    const firstChunkTimer = setTimeout(() => { if (!gotFirst) controller.abort(); }, FIRST_CHUNK_TIMEOUT_MS);
+    let stallTimer = setInterval(() => { if (Date.now() - lastEmitTs > STALL_TIMEOUT_MS) controller.abort(); }, 1000);
+    try {
       while (true){
-        ({ done, value } = await reader.read());
+        const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
         parseGeminiSSEChunk(acc, chunk);
-        onDelta(acc.all);
+        if (acc.all){
+          gotFirst = true;
+          lastEmitTs = Date.now();
+          onDelta(acc.all);
+        }
       }
       return acc.all;
-    };
-    return { pump };
+    } finally {
+      clearTimeout(firstChunkTimer);
+      clearInterval(stallTimer);
+      try { reader.releaseLock(); } catch {}
+    }
   }
 
   function pushUser(text){ conversationHistory.push({ role:'user', parts:[{text}] }); saveBufferLS(); }
@@ -230,23 +240,43 @@
     const historyControls = document.getElementById('history-controls');
 
     // URL 意图
-    const params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    const hashStr = (location.hash || '');
+    const params = new URLSearchParams(hashStr.replace(/^#/, ''));
     const hasLoadIntent = params.has('load');
-    const hasSendIntent = params.has('send');
+    const hasSendInHash = params.has('send');
     const hasResume     = params.has('resume');
-    const hasEditIdx    = params.has('edit'); // 仅 index 回来时处理
+    const hasEditIdx    = params.has('edit');
 
-    if (!hasLoadIntent && !hasSendIntent && !hasResume) { clearBufferLS(); } // 冷启动默认新会话
+    // 只要不是明确 resume/load/send，就把当前会话清成新会话
+    if (!hasLoadIntent && !hasSendInHash && !hasResume) { clearBufferLS(); }
+
+    // 清理历史遗留：若没有显式发送意图，干掉旧草稿，防误发
+    try {
+      const sendFlag = localStorage.getItem(LS_SEND_FLAG);
+      if (!hasSendInHash && sendFlag !== '1') {
+        localStorage.removeItem(LS_PENDING_INPUT);
+      }
+    } catch {}
+
     loadBufferLS();
 
     try { await initCOS(); await loadIndexMap(); }
     catch(e){ addMsg('System', `**Error:** 初始化失败: ${e.message}`); }
 
-    let pendingSend = hasSendIntent ? b64d(params.get('send') || '') : '';
+    // 显式“发送意图”判定：hash 带 send 或本地 SEND_FLAG=1
+    const hasExplicitSend = hasSendInHash || (localStorage.getItem(LS_SEND_FLAG) === '1');
+
+    let pendingSend = '';
     let pendingLoad = hasLoadIntent ? (params.get('load') || '') : '';
     const editIndex  = hasEditIdx ? parseInt(params.get('edit') || '-1', 10) : -1;
 
-    if (!pendingSend){ try { pendingSend = localStorage.getItem(LS_PENDING_INPUT) || ''; localStorage.removeItem(LS_PENDING_INPUT); } catch {} }
+    if (hasExplicitSend) {
+      pendingSend = hasSendInHash
+        ? b64d(params.get('send') || '')
+        : (localStorage.getItem(LS_PENDING_INPUT) || '');
+      try { localStorage.removeItem(LS_PENDING_INPUT); localStorage.removeItem(LS_SEND_FLAG); } catch {}
+    }
+
     if (location.hash) history.replaceState(null, '', location.pathname);
 
     // 渲染现有缓冲或欢迎语
@@ -267,7 +297,6 @@
     }
 
     if (pendingSend && editIndex >= 0 && editIndex < conversationHistory.length) {
-      // 编辑重算：替换这条 user 消息，截断后续对话
       if (conversationHistory[editIndex]?.role !== 'user') {
         addMsg('System', '**Error:** 只能编辑你自己的消息');
       } else {
@@ -276,7 +305,7 @@
         saveBufferLS();
         chatWindow.innerHTML = '';
         renderAll();
-        await sendMessage('', { chatWindow, autoSaveToggle, noEchoUser: true }); // 已经把用户消息放进去了，不再重复显示
+        await sendMessage('', { chatWindow, autoSaveToggle, noEchoUser: true });
       }
     } else if (pendingSend) {
       await sendMessage(pendingSend, { chatWindow, autoSaveToggle });
@@ -307,7 +336,6 @@
         const el = addMsg(who, msg.parts?.[0]?.text || '', false);
         if (msg.role==='user') { el.dataset.index = String(idx); el.classList.add('clickable'); }
       });
-      // 给“自己的气泡”加点击编辑
       chatWindow.querySelectorAll('.message.user.clickable').forEach(el => {
         el.addEventListener('click', ()=>{
           const idx = parseInt(el.dataset.index || '-1', 10);
@@ -335,10 +363,8 @@
     }
 
     async function sendMessage(userText, env){
-      // 如果是正常发送，追加用户消息；如果是“编辑重算”，noEchoUser=true
       if (!env.noEchoUser) { addMsg('NyAme', userText, false); pushUser(userText); }
 
-      // 渲染中的 assistant 气泡
       const assistantDiv = document.createElement('div');
       assistantDiv.className = 'message gemini';
       assistantDiv.innerHTML = '…';
@@ -346,26 +372,30 @@
       env.chatWindow.scrollTop = env.chatWindow.scrollHeight;
 
       try {
-        if (USE_STREAM && 'ReadableStream' in window) {
-          // 流式
-          const { pump } = await streamModelReply();
-          let lastRendered = '';
-          await pump((fullText)=>{
-            if (fullText === lastRendered) return;
-            lastRendered = fullText;
-            assistantDiv.innerHTML = renderMarkdown(fullText);
-            renderMathIn(assistantDiv);
-            env.chatWindow.scrollTop = env.chatWindow.scrollHeight;
-          });
-          // 录入对话
-          pushModel(lastRendered || assistantDiv.textContent || '');
-        } else {
-          // 非流式回退
+        let finalText = '';
+        let streamedOk = false;
+
+        if (USE_STREAM) {
+          try {
+            finalText = await streamModelReplyWithTimeout((full) => {
+              streamedOk = true;
+              assistantDiv.innerHTML = renderMarkdown(full);
+              renderMathIn(assistantDiv);
+              env.chatWindow.scrollTop = env.chatWindow.scrollHeight;
+            });
+          } catch (e) {
+            streamedOk = false;
+          }
+        }
+
+        if (!streamedOk) {
           const reply = await modelReply();
           assistantDiv.innerHTML = renderMarkdown(reply);
           renderMathIn(assistantDiv);
-          pushModel(reply);
+          finalText = reply;
         }
+
+        pushModel(finalText || assistantDiv.textContent || '');
         if (document.getElementById('auto-save-toggle')?.checked && cos) { await saveConversation(); }
       } catch(e){
         assistantDiv.innerHTML = esc('**Error:** ' + (e?.message || e));
@@ -379,23 +409,26 @@
     const btn = document.getElementById('input-send-btn');
     const back = document.querySelector('.ghost-btn.small');
 
+    // 保险：进入输入页先清掉“发送意图”，只有点发送时才设置
+    try { localStorage.removeItem(LS_SEND_FLAG); } catch {}
+
     const params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
     const editIdx = params.has('edit') ? parseInt(params.get('edit')||'-1',10) : -1;
     const prefill = params.has('text') ? b64d(params.get('text')||'') : '';
-
     if (prefill) ta.value = prefill;
 
-    // 发送
     btn.addEventListener('click', () => {
       const t = (ta.value||'').trim();
       if (!t) { window.location.href = 'index.html#resume'; return; }
-      try { localStorage.setItem(LS_PENDING_INPUT, t); } catch {}
+      try {
+        localStorage.setItem(LS_PENDING_INPUT, t);
+        localStorage.setItem(LS_SEND_FLAG, '1'); // 显式发送意图
+      } catch {}
       const payload = encodeURIComponent(b64e(t));
       if (editIdx >= 0) window.location.href = `index.html#edit=${editIdx}&send=${payload}`;
       else window.location.href = `index.html#send=${payload}`;
     });
 
-    // 取消：回到 index 并保留当前会话（#resume）
     if (back) back.setAttribute('href', 'index.html#resume');
 
     ta.addEventListener('keydown', (e) => {
