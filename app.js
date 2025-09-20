@@ -19,11 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const listCloseBtn = document.getElementById('list-close-btn');
   const conversationList = document.getElementById('conversation-list');
 
+  // --- 兼容模式判定：小屏 + UA 里含 watch/oppo 任一，即视为手表WebView ---
+  const IS_WATCH =
+    /watch|oppo/i.test(navigator.userAgent) ||
+    (Math.max(screen.width, screen.height) <= 520 && Math.min(screen.width, screen.height) <= 420);
+
   // --- 状态 ---
   let cos, cosConfig;
   let conversationHistory = [];
   let currentConversationKey = null;
-  let lastScrollTop = 0;
 
   let bucketKeys = [];   // 会话 key（时间戳.json）
   let indexMap = {};     // meta/watch-index.json: { key: title }
@@ -41,9 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       if (window.marked && typeof marked.parse === 'function') return marked.parse(text);
       return `<p>${escapeHTML(text)}</p>`;
-    } catch {
-      return `<p>${escapeHTML(text)}</p>`;
-    }
+    } catch { return `<p>${escapeHTML(text)}</p>`; }
   }
 
   // --- 工具 ---
@@ -69,94 +71,96 @@ document.addEventListener('DOMContentLoaded', () => {
     return base.slice(0, limit);
   };
 
-  // ===== 显隐与弹窗的“笨办法”管控，兼容怪浏览器 =====
-  const modalState = { openCount: 0, openedAt: 0 };
-  const sheetsOpen = () => !inputModal.classList.contains('hidden') || !listModal.classList.contains('hidden');
-
-  const isAtBottom = () => {
-    const sh = chatWindow.scrollHeight || 0;
-    const st = chatWindow.scrollTop || 0;
-    const ch = chatWindow.clientHeight || 0;
-    // 宽容 12px 容差，适配手表布局抖动
-    return Math.abs(sh - st - ch) < 12;
-  };
-
-  function updateComposeVisibility() {
-    const show = isAtBottom() && !sheetsOpen();
-    composeBtn.classList.toggle('hidden', !show);
-    chatWindow.classList.toggle('has-compose', show); // 只加内边距，不制造底栏
-  }
-
+  // ===== 显隐：手表模式用 display 显隐，禁止背板点击关闭 =====
   function openSheet(el) {
-    modalState.openCount++;
-    modalState.openedAt = Date.now();
-    el.classList.remove('hidden');
-    document.body.classList.add('modal-open');
+    if (IS_WATCH) {
+      el.style.display = 'block';
+      el.classList.remove('hidden'); // 让样式有默认态
+      document.body.classList.add('compat');
+      document.body.classList.add('modal-open');
+    } else {
+      el.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+    }
     updateComposeVisibility();
   }
   function closeSheet(el) {
-    el.classList.add('hidden');
-    modalState.openCount = Math.max(0, modalState.openCount - 1);
-    if (!sheetsOpen()) document.body.classList.remove('modal-open');
+    if (IS_WATCH) {
+      el.style.display = 'none';
+      el.classList.add('hidden');
+      // 如果两个都关了，移除 modal-open
+      if (inputModal.style.display === 'none' && listModal.style.display === 'none') {
+        document.body.classList.remove('modal-open');
+      }
+    } else {
+      el.classList.add('hidden');
+      if (inputModal.classList.contains('hidden') && listModal.classList.contains('hidden')) {
+        document.body.classList.remove('modal-open');
+      }
+    }
     updateComposeVisibility();
   }
 
-  // 背板点击只在“点到背板本身”时触发，且打开后 300ms 内无效
+  // 禁用背板点击关闭（只保留显式按钮），以免“瞬开瞬关”
   document.querySelectorAll('.modal-backdrop').forEach((bk) => {
-    bk.addEventListener('click', (e) => {
-      if (e.target !== bk) return;
-      if (Date.now() - modalState.openedAt < 300) return;
-      const parent = bk.closest('[role="dialog"]');
-      if (parent) closeSheet(parent);
-    });
+    bk.onclick = (e) => {
+      if (!IS_WATCH) {
+        // 非手表仍可点击背板关闭
+        const parent = bk.closest('[role="dialog"]');
+        if (parent) closeSheet(parent);
+      }
+    };
   });
 
-  // ===== 滚动与视口变化 =====
-  chatWindow.addEventListener('scroll', () => {
-    const scrollTop = chatWindow.scrollTop;
-    if (scrollTop > lastScrollTop && scrollTop > 30) historyControls.classList.add('hidden');
-    else historyControls.classList.remove('hidden');
-    lastScrollTop = Math.max(0, scrollTop);
-    updateComposeVisibility();
-  }, { passive: true });
+  // ===== Type 显隐：手表模式常显，其他端底部才显 =====
+  function isAtBottom() {
+    const sh = chatWindow.scrollHeight || 0;
+    const st = chatWindow.scrollTop || 0;
+    const ch = chatWindow.clientHeight || 0;
+    return Math.abs(sh - st - ch) < 8;
+  }
+  function updateComposeVisibility() {
+    if (IS_WATCH) {
+      composeBtn.classList.remove('hidden');
+      chatWindow.classList.add('has-compose');
+      return;
+    }
+    const show = isAtBottom() && inputModal.classList.contains('hidden') && listModal.classList.contains('hidden');
+    composeBtn.classList.toggle('hidden', !show);
+    chatWindow.classList.toggle('has-compose', show);
+  }
 
-  // 视口变化（手表上地址栏/系统条改变高度时）
-  window.addEventListener('resize', () => {
-    // 强制一次微滚，触发滚动计算
-    chatWindow.scrollTop = chatWindow.scrollTop + 1;
-    chatWindow.scrollTop = chatWindow.scrollTop - 1;
-    updateComposeVisibility();
-  });
-
-  // 内容变更时也重算（欢迎语、回复等）。适配奇怪内核不触发 resize 的情况
-  const mo = new MutationObserver(() => updateComposeVisibility());
-  mo.observe(chatWindow, { childList: true, subtree: false });
+  // 顶栏滚动隐藏：手表模式关闭这一特性，别给内核添堵
+  if (!IS_WATCH) {
+    chatWindow.addEventListener('scroll', () => {
+      const st = chatWindow.scrollTop;
+      if (st > 30) historyControls.classList.add('hidden');
+      else historyControls.classList.remove('hidden');
+      updateComposeVisibility();
+    }, { passive: true });
+  } else {
+    historyControls.classList.remove('hidden');
+    chatWindow.addEventListener('scroll', () => updateComposeVisibility(), { passive: true });
+  }
 
   // ===== 输入浮层 =====
-  composeBtn.addEventListener('click', (e) => {
-    e.preventDefault();
+  composeBtn.addEventListener('click', () => {
     openSheet(inputModal);
-    // 某些设备需要下一帧再 focus
-    requestAnimationFrame(() => modalTextarea && modalTextarea.focus());
+    setTimeout(() => modalTextarea && modalTextarea.focus(), 0);
   });
-
   modalSendBtn.addEventListener('click', () => {
     const text = modalTextarea.value.trim();
     if (text) sendMessage(text);
     modalTextarea.value = '';
     closeSheet(inputModal);
   });
-  modalCancelBtn.addEventListener('click', () => {
-    modalTextarea.value = '';
-    closeSheet(inputModal);
-  });
+  modalCancelBtn.addEventListener('click', () => { modalTextarea.value = ''; closeSheet(inputModal); });
   modalCloseBtn.addEventListener('click', () => closeSheet(inputModal));
 
-  // ===== 历史浮层：先开窗再异步加载，避免“等网络期间以为没反应” =====
-  loadChatBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
+  // ===== 历史浮层：先开窗再加载，避免“没反应”的错觉 =====
+  loadChatBtn.addEventListener('click', async () => {
     openSheet(listModal);
-    renderConversationList(true); // 先画个 loading
+    renderConversationList(true);
     try {
       await loadConversationList();
       await loadIndexMap();
@@ -240,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
       startNewChat();
     } catch (error) {
       addMessage('System', `**Error:** 初始化失败: ${error.message}`);
-      startNewChat(); // 也要有欢迎语，别空屏
+      startNewChat();
     }
   }
 
@@ -336,8 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     conversationHistory = [];
     currentConversationKey = null;
     addMessage('Gemini', '你好, NyAme。我是 Gemini，准备好开始了吗？');
-    // 确保欢迎语后也会显示 Type
-    setTimeout(updateComposeVisibility, 0);
+    updateComposeVisibility();
   }
 
   function addMessage(sender, text, addToHistory = true) {
@@ -392,8 +395,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 顶部按钮
-  newChatBtn.addEventListener('click', (e) => { e.preventDefault(); startNewChat(); });
+  newChatBtn.addEventListener('click', () => startNewChat());
 
   // 启动
+  // 手表模式下把两个浮层先强制设为 display:none，避免初次 class 切换不生效
+  if (IS_WATCH) {
+    inputModal.style.display = 'none';
+    listModal.style.display = 'none';
+    document.body.classList.add('compat');
+  }
   main();
 });

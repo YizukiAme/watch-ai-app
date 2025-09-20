@@ -3,40 +3,23 @@
 html, body { height: 100%; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  margin: 0;
-  background: #000;
-  color: #fff;
+  margin: 0; background: #000; color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: clamp(14px, 2.8vh, 16px);
-  line-height: 1.4;
-  -webkit-tap-highlight-color: transparent;
+  line-height: 1.4; -webkit-tap-highlight-color: transparent;
 }
 :focus, :focus-visible { outline: none; }
 
 /* Theme */
 :root{
-  --bg: #000;
-  --surface: #1c1c1e;
-  --text: #fff;
-  --text-2: #8e8e93;
-  --accent: #0a84ff;
-  --accent-50: rgba(10,132,255,0.5);
-  --gemini-bubble: #2c2c2e;
-  --system-bubble: #5c2b2b;
-  --radius: 18px;
-  --radius-sm: 12px;
-  --pad: 10px;
-  --transition: .25s;
+  --bg: #000; --surface: #1c1c1e; --text: #fff; --text-2: #8e8e93;
+  --accent: #0a84ff; --accent-50: rgba(10,132,255,0.5);
+  --gemini-bubble: #2c2c2e; --system-bubble: #5c2b2b;
+  --radius: 18px; --radius-sm: 12px; --pad: 10px; --transition: .25s;
 }
 
 /* Root */
-#app{
-  display:flex; flex-direction:column;
-  height:100vh; width:100vw;
-  padding:var(--pad);
-  background:var(--bg);
-  overflow:hidden;
-}
+#app{ display:flex; flex-direction:column; height:100vh; width:100vw; padding:var(--pad); background:var(--bg); overflow:hidden; }
 
 /* Top controls */
 #history-controls{
@@ -48,9 +31,8 @@ body {
 
 .pill-btn{
   display:inline-flex; align-items:center; justify-content:center;
-  background:var(--surface); color:var(--text);
-  border:0; border-radius:999px; width:36px; height:36px;
-  font-size:16px; font-weight:600; line-height:1; cursor:pointer;
+  background:var(--surface); color:var(--text); border:0; border-radius:999px;
+  width:36px; height:36px; font-size:16px; font-weight:600; line-height:1; cursor:pointer;
   transition: background var(--transition), transform var(--transition), color var(--transition);
 }
 .pill-btn:active{ transform:scale(.94); }
@@ -82,7 +64,7 @@ body {
 /* Type button */
 #compose-btn{
   position:fixed; left:50%; transform:translateX(-50%);
-  bottom:calc(env(safe-area-inset-bottom,0) + 10px);
+  bottom:10px; /* 去掉 env() 依赖，兼容老内核 */
   padding:8px 14px; border:0; border-radius:14px;
   background:var(--accent); color:#fff; font-size:15px; line-height:1;
   box-shadow:0 4px 12px rgba(0,0,0,.35); cursor:pointer;
@@ -93,7 +75,8 @@ body {
 
 /* Fullscreen modals */
 #input-modal, #list-modal{
-  position:fixed; inset:0; display:grid; place-items:center;
+  position:fixed; inset:0;
+  display:grid; place-items:center;
   transition: opacity var(--transition), visibility var(--transition);
   z-index: 50;
 }
@@ -101,28 +84,20 @@ body {
 
 .modal-backdrop{
   position:absolute; inset:0;
-  background:linear-gradient(180deg, rgba(8,10,14,.55), rgba(8,10,14,.65));
-  backdrop-filter: blur(10px) saturate(120%);
+  background:rgba(8,10,14,.6); /* 去掉 backdrop-filter，兼容老内核 */
 }
 
 .modal-content{
   position:relative; z-index:1; width:100vw; height:100vh; margin:0; border-radius:0;
-  padding:calc(env(safe-area-inset-top,0) + 10px) var(--pad) calc(env(safe-area-inset-bottom,0) + 10px);
-  background:
-    radial-gradient(120% 120% at 50% 0%, rgba(70,90,140,.10), rgba(30,34,42,.05) 40%, rgba(18,18,22,.08) 70%),
-    rgba(20,22,26,0.28);
+  padding:10px var(--pad) 10px;
+  background:rgba(20,22,26,0.28);
   border:1px solid rgba(255,255,255,0.08);
   box-shadow: 0 10px 30px rgba(0,0,0,.45) inset;
-  backdrop-filter: blur(14px) saturate(120%);
   transition: transform var(--transition), opacity var(--transition);
 }
-#input-modal.hidden .modal-content,
-#list-modal.hidden .modal-content{ transform: scale(.98); opacity:.98; }
+#input-modal.hidden .modal-content, #list-modal.hidden .modal-content{ transform: scale(.98); opacity:.98; }
 
-.modal-titlebar{
-  display:flex; align-items:center; justify-content:space-between;
-  margin-bottom:8px;
-}
+.modal-titlebar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .modal-title{ font-weight:700; }
 
 .input-fullscreen{ display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
@@ -130,14 +105,12 @@ body {
 #modal-textarea{
   flex:1 1 auto; min-height:0; width:100%; padding:10px 12px; border-radius:12px;
   border:1px solid rgba(255,255,255,.18);
-  background:rgba(0,0,0,.35);
-  color:#fff; font-size:1rem; resize:none;
-  backdrop-filter: blur(6px);
+  background:#111; color:#fff; font-size:1rem; resize:none;
 }
 .modal-actions{ display:flex; gap:8px; }
 .primary-btn, .ghost-btn{ flex:1 1 auto; height:36px; border-radius:10px; border:0; font-weight:600; }
 .primary-btn{ background:var(--accent); color:#fff; }
-.ghost-btn{ background:rgba(255,255,255,.08); color:#ddd; }
+.ghost-btn{ background:#2a2a2a; color:#ddd; }
 .small{ height:30px; font-size:.9rem; }
 
 .list-fullscreen{ display:grid; grid-template-rows:auto 1fr; gap:8px; }
@@ -145,18 +118,19 @@ body {
 .list-row{ display:grid; grid-template-columns:1fr auto; gap:6px; }
 .list-item{
   display:block; width:100%; text-align:left; padding:10px 12px;
-  color:#fff; background:rgba(17,17,20,.45);
+  color:#fff; background:#111;
   border:1px solid rgba(255,255,255,.10); border-radius:12px;
-  backdrop-filter: blur(6px);
   cursor:pointer; transition: background var(--transition), border-color var(--transition), transform var(--transition);
 }
 .list-item:active{ transform:scale(.98); }
 .list-item.active{ background:rgba(10,132,255,.18); border-color:var(--accent); }
-.list-del{
-  padding:0 10px; border:1px solid rgba(255,255,255,.18);
-  border-radius:10px; background:rgba(26,26,30,.5);
-  color:#f2bbbb; backdrop-filter: blur(6px);
-}
+.list-del{ padding:0 10px; border:1px solid rgba(255,255,255,.18); border-radius:10px; background:#1a1a1a; color:#f2bbbb; }
+
 .list-empty{ text-align:center; color:var(--text-2); padding:16px 0; }
 
-body.modal-open{ overflow:hidden; }
+/* ===== 手表兼容模式额外兜底（通过 body.compat 开启） ===== */
+body.compat #compose-btn.hidden{ opacity:1; transform:translateX(-50%); pointer-events:auto; } /* Type 常显 */
+body.compat #chat-window.has-compose{ padding-bottom:44px; }
+body.compat #history-controls{ opacity:1; transform:none; } /* 禁止滚动隐藏顶栏，免抖动 */
+
+/* 显示/隐藏浮层走 display 切换，由 JS 控制；这里不再改 */
