@@ -2,12 +2,22 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Watch AI</title>
   <link rel="stylesheet" href="style.css" />
+
+  <!-- 本地 KaTeX（离线可用） -->
+  <link rel="stylesheet" href="lib/katex/katex.min.css">
+  <script defer src="lib/katex/katex.min.js"></script>
+  <script defer src="lib/katex/contrib/auto-render.min.js"></script>
+
+  <!-- 本地 marked（离线可用） -->
+  <script src="lib/marked.min.js"></script>
 </head>
 <body data-page="index">
   <div id="app">
+    <!-- 顶部三键：改为悬浮胶囊，不再占据整条 -->
     <div id="history-controls" role="toolbar" aria-label="History Controls">
       <button id="new-chat-btn" class="pill-btn" title="New Chat" aria-label="New Chat">N</button>
       <a id="load-chat-link" class="pill-btn" href="history.html" title="History" aria-label="History">L</a>
@@ -19,12 +29,10 @@
 
     <div id="chat-window" aria-live="polite"></div>
 
-    <!-- 不用浮窗，直接跳转到输入页 -->
+    <!-- 右下角 Type 悬浮按钮 -->
     <a id="compose-btn" class="compose-link" href="input.html" title="输入" aria-label="输入">Type</a>
   </div>
 
-  <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

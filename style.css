@@ -1,4 +1,4 @@
-/* 基础与主题 */
+/* Reset & touch */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 html { -webkit-text-size-adjust: 100%; }
@@ -10,20 +10,32 @@ body {
 }
 :focus, :focus-visible { outline: none; }
 
+/* Theme */
 :root{
   --bg:#000; --surface:#1c1c1e; --text:#fff; --text-2:#8e8e93; --accent:#0a84ff;
-  --gemini:#2c2c2e; --system:#5c2b2b; --pad:10px; --radius:18px; --t:.25s;
+  --gemini:#2c2c2e; --system:#5c2b2b; --pad:10px; --radius:18px; --t:.22s;
 }
 
-/* 主容器 */
-#app{ display:flex; flex-direction:column; height:100vh; width:100vw; padding:var(--pad); overflow:hidden; }
+/* App container */
+#app{
+  display:flex; flex-direction:column; height:100vh; width:100vw;
+  padding:var(--pad); overflow:hidden; position:relative;
+}
 
-/* 顶部三键 */
+/* 悬浮顶栏胶囊：不占整条空间，无“黑框”感 */
 #history-controls{
-  display:flex; justify-content:center; align-items:center; gap:8px; padding-bottom:6px; flex-shrink:0;
-  transition: transform var(--t) ease-in-out, opacity var(--t);
+  position:fixed; z-index:50;
+  top:calc(env(safe-area-inset-top,0) + 6px); left:50%;
+  transform:translateX(-50%);
+  display:flex; align-items:center; gap:6px;
+  padding:6px;
+  background:rgba(18,18,22,0.35);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:999px;
+  backdrop-filter: blur(10px) saturate(120%);
+  transition: opacity var(--t), transform var(--t);
 }
-#history-controls.hidden{ transform:translateY(-140%); opacity:0; }
+#history-controls.hidden{ opacity:0; transform:translate(-50%,-12px); }
 
 /* 圆形按钮（含 S 的 label） */
 .pill-btn{
@@ -31,21 +43,24 @@ body {
   width:36px; height:36px; border-radius:999px; border:0;
   background:var(--surface); color:#fff; font-weight:600; cursor:pointer;
 }
+button.pill-btn, a.pill-btn { text-decoration:none; }
 .save-toggle{ position:relative; }
 #auto-save-toggle{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; }
 #auto-save-toggle + label.pill-btn{ color:var(--text-2); }
 #auto-save-toggle:checked + label.pill-btn{ background:var(--accent); color:#fff; }
 
-/* 聊天窗口 */
+/* Chat window */
 #chat-window{
-  flex:1 1 auto; overflow-y:auto; padding:8px 4px;
+  flex:1 1 auto; overflow-y:auto; padding:12px 4px;
   display:flex; flex-direction:column; gap:8px; overscroll-behavior:contain;
+  /* 留出极小顶部内边距避免信息顶到胶囊下 */
+  padding-top:56px;
 }
 #chat-window::-webkit-scrollbar{ width:2px; }
 #chat-window::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.25); border-radius:2px; }
 .message{
   max-width:92%; padding:8px 12px; border-radius:var(--radius); word-wrap:break-word;
-  animation:fadeIn .25s forwards; opacity:0; transform:translateY(2px) scale(.98);
+  animation:fadeIn .22s forwards; opacity:0; transform:translateY(2px) scale(.98);
 }
 @keyframes fadeIn{ to{ opacity:1; transform:translateY(0) scale(1);} }
 .user{ background:var(--accent); color:#fff; align-self:flex-end; border-bottom-right-radius:6px; }
@@ -54,12 +69,19 @@ body {
 .message p{ margin:.3em 0; }
 .message code{ background:rgba(255,255,255,.08); padding:0 4px; border-radius:6px; }
 
-/* Type 放到右下角，始终可点 */
+/* Markdown 优化（列表/表格/代码块可读） */
+.message pre{ background:#111; border-radius:12px; padding:10px; overflow:auto; }
+.message table{ border-collapse:collapse; }
+.message table th,.message table td{ border:1px solid rgba(255,255,255,.12); padding:6px 8px; }
+.message ul, .message ol{ padding-left:1.4em; }
+
+/* 右下角 Type 悬浮按钮 */
 .compose-link{
   position:fixed; right:var(--pad);
   bottom:calc(env(safe-area-inset-bottom,0) + 10px);
   padding:8px 14px; border:0; border-radius:14px; text-decoration:none;
-  background:var(--accent); color:#fff; font-size:15px; line-height:1; box-shadow:0 4px 12px rgba(0,0,0,.35);
+  background:var(--accent); color:#fff; font-size:15px; line-height:1;
+  box-shadow:0 4px 12px rgba(0,0,0,.35);
 }
 
 /* 通用页（input/history） */
@@ -95,3 +117,6 @@ body {
 .list-item.active{ border-color:var(--accent); }
 .list-del{ padding:0 10px; border:1px solid rgba(255,255,255,.18); border-radius:10px; background:#1a1a1a; color:#f2bbbb; }
 .list-empty{ text-align:center; color:#8e8e93; padding:16px 0; }
+
+/* 去掉安卓那抹“黄色/蓝色焦点框” */
+button:focus, a:focus { outline:none; }

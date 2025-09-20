@@ -13,9 +13,31 @@
   const generationConfig = { temperature: 1.0, maxOutputTokens: 65536 };
   const thinkingConfig   = { thinkingBudget: 32768 };
 
-  // ---- utils ----
+  // ---- Markdown & KaTeX 渲染：本地优先，失败降级 ----
   const escapeHTML = (s='') => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  function md(text){ try{ if(window.marked?.parse) return marked.parse(text); }catch{} return `<p>${escapeHTML(text)}</p>`; }
+  function renderMarkdown(text){
+    try { if (window.marked?.parse) return marked.parse(text); } catch {}
+    // 降级：仅做最基本的换行与转义
+    return `<p>${escapeHTML(String(text||'')).replace(/\n/g,'<br>')}</p>`;
+  }
+  function renderMathIn(container){
+    if (!container) return;
+    if (typeof window.renderMathInElement === 'function') {
+      try {
+        window.renderMathInElement(container, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$',  right: '$',  display: false },
+            { left: '\\(', right: '\\)', display: false },
+            { left: '\\[', right: '\\]', display: true }
+          ],
+          throwOnError: false
+        });
+      } catch {}
+    }
+  }
+
+  // ---- 小工具 ----
   const fmtTime = (ms) => { try { return new Date(parseInt(String(ms),10)).toLocaleString(); } catch { return ms; } };
   const sanitize = (t='') => t.replace(/```[\s\S]*?```/g,'').replace(/`[^`]*`/g,'').replace(/[#>*_~\[\]\(\)\-!]/g,'').replace(/\s+/g,' ').trim();
   const guessTitle = () => {
@@ -24,18 +46,15 @@
     if (!base) return '新对话';
     return (/[\u4e00-\u9fa5]/.test(base) ? base.slice(0,16) : base.slice(0,24));
   };
-
-  // --- Base64 UTF-8 编解码（用于 hash 通道） ---
   const b64e = (s) => { try { return btoa(unescape(encodeURIComponent(s))); } catch { return btoa(s); } };
   const b64d = (s) => { try { return decodeURIComponent(escape(atob(s))); } catch { try { return atob(s); } catch { return ''; } } };
 
   // ---- storage keys ----
-  const LS_PENDING_INPUT = 'watchai_pending_input'; // 兜底：输入页→主页
-  const LS_PENDING_LOAD  = 'watchai_pending_load';  // 兜底：历史页→主页（基本不用了）
-  const LS_CUR_HIST      = 'watchai_cur_history';   // 当前会话缓冲（跨页保留）
-  const LS_CUR_KEY       = 'watchai_cur_key';       // 当前会话 key
+  const LS_PENDING_INPUT = 'watchai_pending_input';
+  const LS_PENDING_LOAD  = 'watchai_pending_load';
+  const LS_CUR_HIST      = 'watchai_cur_history';
+  const LS_CUR_KEY       = 'watchai_cur_key';
 
-  // ---- 缓冲持久化（跨页不丢）----
   function saveBufferLS() {
     try {
       localStorage.setItem(LS_CUR_HIST, JSON.stringify(conversationHistory || []));
@@ -147,26 +166,18 @@
     const autoSaveToggle = document.getElementById('auto-save-toggle');
     const historyControls = document.getElementById('history-controls');
 
-    // 先恢复缓冲
     loadBufferLS();
-
-    // 初始化 COS 和索引
     try { await initCOS(); await loadIndexMap(); } catch(e){ addMsg('System', `**Error:** 初始化失败: ${e.message}`); }
 
-    // 1) 读取 URL hash 或 localStorage 的“待发送/待加载”
+    // 双通道：URL hash + localStorage
     const params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-    let pendingSend = '';
-    let pendingLoad = '';
-
-    if (params.has('send')) pendingSend = b64d(params.get('send') || '');
-    if (params.has('load')) pendingLoad = params.get('load') || '';
-
+    let pendingSend = params.has('send') ? b64d(params.get('send') || '') : '';
+    let pendingLoad = params.has('load') ? (params.get('load') || '') : '';
     if (!pendingSend) { try { pendingSend = localStorage.getItem(LS_PENDING_INPUT) || ''; localStorage.removeItem(LS_PENDING_INPUT); } catch {} }
     if (!pendingLoad) { try { pendingLoad = localStorage.getItem(LS_PENDING_LOAD)  || ''; localStorage.removeItem(LS_PENDING_LOAD); } catch {} }
-
     if (location.hash) history.replaceState(null, '', location.pathname);
 
-    // 2) 展示现有会话或欢迎语
+    // 展示现有会话或欢迎语
     if (conversationHistory.length) {
       conversationHistory.forEach(msg => addMsg(msg.role==='user'?'NyAme':msg.role==='system'?'System':'Gemini', msg.parts?.[0]?.text||'', false));
     } else {
@@ -174,7 +185,7 @@
       saveBufferLS();
     }
 
-    // 3) 先处理“加载历史”，再处理“发送”
+    // 先加载历史，再处理发送
     if (pendingLoad) {
       try {
         await loadConversation(pendingLoad);
@@ -182,12 +193,11 @@
         conversationHistory.forEach(msg => addMsg(msg.role==='user'?'NyAme':msg.role==='system'?'System':'Gemini', msg.parts?.[0]?.text||'', false));
       } catch(e){ addMsg('System', `**Error:** 载入对话失败: ${e.message}`); }
     }
-
     if (pendingSend) {
       await sendMessage(pendingSend, { chatWindow, autoSaveToggle });
     }
 
-    // 4) 滚动时微隐藏顶部栏
+    // 滚动隐藏顶胶囊
     let last = 0;
     chatWindow.addEventListener('scroll', () => {
       const st = chatWindow.scrollTop;
@@ -205,24 +215,23 @@
       saveBufferLS();
     });
 
-    // 渲染与发送
     function addMsg(sender, text, addToBuffer = true){
       const div = document.createElement('div');
       const role = sender.toLowerCase()==='nyame'?'user':sender.toLowerCase()==='system'?'system':'gemini';
       if (addToBuffer && role!=='system') {
-        const rec = { role: role==='user'?'user':'model', parts:[{text}] };
-        conversationHistory.push(rec); saveBufferLS();
+        conversationHistory.push({ role: role==='user'?'user':'model', parts:[{text}] });
+        saveBufferLS();
       }
       div.className = `message ${role}`;
-      div.innerHTML = md(text);
+      div.innerHTML = renderMarkdown(text);
+      // 数学渲染
+      renderMathIn(div);
       chatWindow.appendChild(div);
       chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 
     async function sendMessage(userText, env){
-      // 用户消息
       addMsg('NyAme', userText, false); pushUser(userText);
-      // 思考中
       const thinking = document.createElement('div');
       thinking.className = 'message gemini'; thinking.textContent = '…';
       env.chatWindow.appendChild(thinking); env.chatWindow.scrollTop = env.chatWindow.scrollHeight;
@@ -243,18 +252,13 @@
   function bootInput(){
     const ta = document.getElementById('input-textarea');
     const btn = document.getElementById('input-send-btn');
-
     btn.addEventListener('click', () => {
       const t = (ta.value||'').trim();
-      // 无输入直接回主页
       if (!t) { window.location.href = 'index.html'; return; }
-      // 写入 localStorage 兜底
       try { localStorage.setItem(LS_PENDING_INPUT, t); } catch {}
-      // 用 hash 主通道
       const payload = encodeURIComponent(b64e(t));
       window.location.href = `index.html#send=${payload}`;
     });
-
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') btn.click();
     });
@@ -266,15 +270,11 @@
     try { await initCOS(); await loadConversationList(); await loadIndexMap(); }
     catch(e){ listEl.innerHTML = `<div class="list-empty">${escapeHTML('**Error:** '+e.message)}</div>`; return; }
 
-    if (!bucketKeys.length) {
-      listEl.innerHTML = `<div class="list-empty">没有保存的对话</div>`;
-      return;
-    }
+    if (!bucketKeys.length) { listEl.innerHTML = `<div class="list-empty">没有保存的对话</div>`; return; }
 
     bucketKeys.forEach(k => {
       const row = document.createElement('div'); row.className = 'list-row';
 
-      // 用 <a> 直接跳回主页并带 hash，主页据此加载
       const a = document.createElement('a');
       a.className = 'list-item';
       a.href = `index.html#load=${encodeURIComponent(k)}`;
