@@ -37,6 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 'action': [
                     'cos:GetObject',
                     'cos:PutObject',
+                    'cos:DeleteObject',
                 ],
                 'effect': 'allow',
                 // 资源路径指向存储桶内的所有对象

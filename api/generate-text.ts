@@ -13,9 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 正确的模型 + 正确的 v1beta generateContent 路径
   const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 
-  // 合法的位置：thinkingConfig 应该嵌在 generationConfig 里（2.5 系列支持）
-  // 预算范围见官方：2.5 Pro 支持 128~32768；默认“动态思考”；不能禁用思考。 
-  // https://ai.google.dev/gemini-api/docs/thinking
+
   const finalGenerationConfig = {
     ...generationConfig,
     thinkingConfig: thinkingConfig,
