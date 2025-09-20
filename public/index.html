@@ -4,20 +4,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Watch AI</title>
+  <title>Nyalra</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- 本地 KaTeX（离线可用） -->
+  <!-- PWA manifest 和主题色 -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#000000">
+
+  <!-- 本地 KaTeX -->
   <link rel="stylesheet" href="lib/katex/katex.min.css">
   <script src="lib/katex/katex.min.js"></script>
   <script src="lib/katex/contrib/auto-render.min.js"></script>
 
-  <!-- 本地 marked（离线可用；必须在 app.js 之前） -->
+  <!-- 本地 marked -->
   <script src="lib/marked.min.js"></script>
 
-  <!-- COS SDK：你之前没在 index.html 引，导致 cos not defined -->
+  <!-- COS SDK -->
   <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
 </head>
+
 <body data-page="index">
   <div id="app">
     <!-- 顶部悬浮胶囊，不再占整条 -->
