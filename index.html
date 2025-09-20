@@ -3,28 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Watch AI</title>
+  <title>输入 | Watch AI</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body data-page="index">
-  <div id="app">
-    <div id="history-controls" role="toolbar" aria-label="History Controls">
-      <button id="new-chat-btn" class="pill-btn" title="New Chat" aria-label="New Chat">N</button>
-      <a id="load-chat-link" class="pill-btn" href="history.html" title="History" aria-label="History">L</a>
-      <div class="save-toggle">
-        <input type="checkbox" id="auto-save-toggle" checked aria-label="Auto Save" />
-        <label for="auto-save-toggle" class="pill-btn" title="Auto-Save">S</label>
-      </div>
+<body data-page="input">
+  <div class="page">
+    <div class="topbar">
+      <a class="ghost-btn small" href="index.html">返回</a>
+      <div class="title">新消息</div>
+      <span class="spacer"></span>
     </div>
 
-    <div id="chat-window" aria-live="polite"></div>
-
-    <!-- 不用浮窗，直接跳转到输入页 -->
-    <a id="compose-btn" class="compose-link" href="input.html" title="输入" aria-label="输入">Type</a>
+    <div class="content">
+      <textarea id="input-textarea" placeholder="输入..." autocomplete="off" autocapitalize="none"></textarea>
+      <div class="row">
+        <a class="ghost-btn" href="index.html">取消</a>
+        <button id="input-send-btn" class="primary-btn">发送</button>
+      </div>
+    </div>
   </div>
 
-  <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
