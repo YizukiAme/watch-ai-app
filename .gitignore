@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv
+venv/
+env/
+
+# Conda
+.conda/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Node modules (in case you add a build step for frontend)
+node_modules/
+
+# Secrets
+.env*
+!/.env.example
