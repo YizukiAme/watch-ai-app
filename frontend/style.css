@@ -1,16 +1,179 @@
-body, html {
-    margin: 0; padding: 0; height: 100%; overflow: hidden;
-    background-color: #000; color: #f0f0f0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px; /* 手表上可能需要微调 */
+/* --- 1. 全局样式与 CSS 变量 --- */
+/* 我们使用 CSS 变量来统一管理颜色、圆角和过渡效果，方便未来进行主题更换。*/
+:root {
+    --background-color: #0d0d0d; /* 更柔和的黑色，而非纯黑 */
+    --surface-color: #1a1a1a;   /* 控件区域的背景色 */
+    --primary-text-color: #f0f0f0;
+    --secondary-text-color: #a0a0a0;
+    --accent-color: #007aff;     /* 苹果风格的蓝色，用于高亮和用户消息 */
+    --gemini-bubble-color: #2c2c2e; /* AI 消息气泡颜色 */
+
+    --border-radius-s: 8px;
+    --border-radius-m: 16px;
+
+    --transition-speed: 0.2s;
 }
-#app { display: flex; flex-direction: column; height: 100vh; }
-#history-controls { padding: 4px; background-color: #1a1a1a; }
-#conversation-selector { width: 100%; background-color: #333; color: #fff; border: 1px solid #555; }
-#chat-window { flex-grow: 1; overflow-y: auto; padding: 8px; }
-.message { max-width: 85%; padding: 6px 10px; margin-bottom: 8px; border-radius: 12px; line-height: 1.4; }
-.user { background-color: #007aff; color: white; align-self: flex-end; margin-left: auto; }
-.gemini { background-color: #333; color: white; align-self: flex-start; }
-#input-form { display: flex; padding: 4px; border-top: 1px solid #333; }
-#message-input { flex-grow: 1; background: #222; border: none; color: #fff; padding: 8px; }
-#input-form button { background: #007aff; color: white; border: none; padding: 8px 12px; }
+
+/* 基础重置和字体设置 */
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--background-color);
+    color: var(--primary-text-color);
+    /* 使用系统默认字体，保证在任何设备上都清晰美观 */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px; /* 略微增大基础字号以提高可读性 */
+    -webkit-font-smoothing: antialiased; /* 抗锯齿，使字体更平滑 */
+}
+
+/* --- 2. 整体布局 --- */
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 8px; /* 增加全局内边距，避免内容紧贴屏幕边缘 */
+    box-sizing: border-box;
+}
+
+/* --- 3. 顶部控制区域 --- */
+#history-controls {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--surface-color);
+    display: flex;
+    flex-wrap: wrap; /* 允许换行 */
+    align-items: center;
+    gap: 8px; /* 控件间距 */
+}
+
+#history-controls button, #history-controls select {
+    background-color: var(--surface-color);
+    color: var(--primary-text-color);
+    border: none;
+    padding: 8px 12px;
+    border-radius: var(--border-radius-s);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+}
+
+#history-controls button:hover, #history-controls select:hover {
+    background-color: #3a3a3c;
+}
+
+#history-controls select {
+    flex-grow: 1; /* 让下拉框占据剩余空间 */
+}
+
+.save-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    padding-left: 4px;
+}
+
+/* --- 4. 聊天窗口 --- */
+#chat-window {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 12px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 自定义美化滚动条，使其在小屏幕上不那么突兀 */
+#chat-window::-webkit-scrollbar {
+    width: 4px;
+}
+#chat-window::-webkit-scrollbar-track {
+    background: transparent;
+}
+#chat-window::-webkit-scrollbar-thumb {
+    background-color: #444;
+    border-radius: 20px;
+}
+
+/* 消息气泡通用样式 */
+.message {
+    padding: 10px 14px;
+    border-radius: var(--border-radius-m);
+    line-height: 1.5;
+    max-width: 85%;
+    word-wrap: break-word; /* 强制长单词换行 */
+    /* 新增：平滑的入场动画 */
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fadeIn var(--transition-speed) forwards;
+}
+
+/* 定义入场动画 */
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.user {
+    background-color: var(--accent-color);
+    color: white;
+    align-self: flex-end; /* 用户消息靠右 */
+    border-bottom-right-radius: var(--border-radius-s); /* 增加一点不对称美感 */
+}
+
+.gemini, .system {
+    background-color: var(--gemini-bubble-color);
+    color: var(--primary-text-color);
+    align-self: flex-start; /* AI 和系统消息靠左 */
+    border-bottom-left-radius: var(--border-radius-s);
+}
+
+.system {
+    background-color: #4a2d2d; /* 系统错误消息使用警示性颜色 */
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- 5. 底部输入区域 --- */
+#input-form {
+    display: flex;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--surface-color);
+}
+
+#message-input {
+    flex-grow: 1;
+    background: var(--surface-color);
+    border: 1px solid transparent;
+    color: var(--primary-text-color);
+    padding: 10px 14px;
+    border-radius: var(--border-radius-m);
+    font-size: 15px;
+    transition: border-color var(--transition-speed);
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: var(--accent-color); /* 聚焦时高亮边框 */
+}
+
+#input-form button {
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 0 16px;
+    border-radius: var(--border-radius-m);
+    font-size: 20px;
+    cursor: pointer;
+    transition: transform var(--transition-speed), background-color var(--transition-speed);
+}
+
+#input-form button:active {
+    transform: scale(0.9); /* 点击时有按压反馈 */
+}

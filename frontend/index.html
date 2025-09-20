@@ -9,15 +9,21 @@
 <body>
     <div id="app">
         <div id="history-controls">
+            <button id="new-chat-btn">New Chat</button>
             <select id="conversation-selector" title="选择对话"></select>
-        </div>
-        <div id="chat-window">
+            <div class="save-toggle">
+                <input type="checkbox" id="auto-save-toggle" checked>
+                <label for="auto-save-toggle">Auto-Save</label>
             </div>
+        </div>
+        <div id="chat-window"></div>
         <form id="input-form">
             <input type="text" id="message-input" placeholder="输入..." autocomplete="off">
             <button type="submit">▲</button>
         </form>
     </div>
+
+    <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="app.js"></script>
 </body>
