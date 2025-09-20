@@ -13,12 +13,18 @@
   const generationConfig = { temperature: 1.0, maxOutputTokens: 65536 };
   const thinkingConfig   = { thinkingBudget: 32768 };
 
-  // ---- Markdown & KaTeX 渲染：本地优先，失败降级 ----
+  // ---- Markdown & KaTeX 渲染（兼容任意版本 marked）----
   const escapeHTML = (s='') => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   function renderMarkdown(text){
-    try { if (window.marked?.parse) return marked.parse(text); } catch {}
-    // 降级：仅做最基本的换行与转义
-    return `<p>${escapeHTML(String(text||'')).replace(/\n/g,'<br>')}</p>`;
+    try {
+      const m = window.marked;
+      const parse = typeof m?.parse === 'function' ? m.parse
+                  : typeof m === 'function' ? m
+                  : null;
+      if (parse) return parse(String(text ?? ''));
+    } catch {}
+    // 降级：仅转义和换行
+    return `<p>${escapeHTML(String(text||'')) .replace(/\n/g,'<br>')}</p>`;
   }
   function renderMathIn(container){
     if (!container) return;
@@ -80,6 +86,7 @@
 
   // COS
   async function initCOS() {
+    if (typeof COS !== 'function') throw new Error('COS not defined'); // 直接早失败，别装
     const res = await fetch('/api/cos-credentials');
     if (!res.ok) throw new Error('Failed to fetch credentials');
     const sts = await res.json();
@@ -166,18 +173,34 @@
     const autoSaveToggle = document.getElementById('auto-save-toggle');
     const historyControls = document.getElementById('history-controls');
 
-    loadBufferLS();
-    try { await initCOS(); await loadIndexMap(); } catch(e){ addMsg('System', `**Error:** 初始化失败: ${e.message}`); }
-
-    // 双通道：URL hash + localStorage
+    // 哈希意图：决定是否恢复历史/发送
     const params = new URLSearchParams((location.hash || '').replace(/^#/, ''));
-    let pendingSend = params.has('send') ? b64d(params.get('send') || '') : '';
-    let pendingLoad = params.has('load') ? (params.get('load') || '') : '';
-    if (!pendingSend) { try { pendingSend = localStorage.getItem(LS_PENDING_INPUT) || ''; localStorage.removeItem(LS_PENDING_INPUT); } catch {} }
-    if (!pendingLoad) { try { pendingLoad = localStorage.getItem(LS_PENDING_LOAD)  || ''; localStorage.removeItem(LS_PENDING_LOAD); } catch {} }
+    const hasLoadIntent = params.has('load');
+    const hasSendIntent = params.has('send');
+    const resetIntent   = params.has('reset');
+
+    // 冷启动策略：默认新会话。只有带意图时才恢复/发送。
+    if (resetIntent) { clearBufferLS(); }
+    if (!hasLoadIntent && !hasSendIntent) { clearBufferLS(); }  // 关键：不再自动粘回上次的
+
+    // 先恢复本地缓冲（可能为空）
+    loadBufferLS();
+
+    // 初始化 COS
+    try { await initCOS(); await loadIndexMap(); }
+    catch(e){
+      addMsg('System', `**Error:** 初始化失败: ${e.message}`);
+    }
+
+    // 取意图数据（URL hash 优先，其次 localStorage 兜底）
+    let pendingSend = hasSendIntent ? b64d(params.get('send') || '') : '';
+    let pendingLoad = hasLoadIntent ? (params.get('load') || '') : '';
+    if (!pendingSend) { try { pendingSend = localStorage.getItem('watchai_pending_input') || ''; localStorage.removeItem('watchai_pending_input'); } catch {} }
+
+    // 清掉 hash，避免刷新重发
     if (location.hash) history.replaceState(null, '', location.pathname);
 
-    // 展示现有会话或欢迎语
+    // 展示“当前缓冲”或欢迎语
     if (conversationHistory.length) {
       conversationHistory.forEach(msg => addMsg(msg.role==='user'?'NyAme':msg.role==='system'?'System':'Gemini', msg.parts?.[0]?.text||'', false));
     } else {
@@ -185,8 +208,8 @@
       saveBufferLS();
     }
 
-    // 先加载历史，再处理发送
-    if (pendingLoad) {
+    // 先处理加载历史，再处理发送
+    if (pendingLoad && cos) {
       try {
         await loadConversation(pendingLoad);
         chatWindow.innerHTML = '';
@@ -197,7 +220,7 @@
       await sendMessage(pendingSend, { chatWindow, autoSaveToggle });
     }
 
-    // 滚动隐藏顶胶囊
+    // 滚动时微隐藏顶胶囊
     let last = 0;
     chatWindow.addEventListener('scroll', () => {
       const st = chatWindow.scrollTop;
@@ -224,7 +247,6 @@
       }
       div.className = `message ${role}`;
       div.innerHTML = renderMarkdown(text);
-      // 数学渲染
       renderMathIn(div);
       chatWindow.appendChild(div);
       chatWindow.scrollTop = chatWindow.scrollHeight;
@@ -240,7 +262,7 @@
         const reply = await modelReply();
         env.chatWindow.removeChild(thinking);
         addMsg('Gemini', reply, false); pushModel(reply);
-        if (document.getElementById('auto-save-toggle')?.checked) { await saveConversation(); }
+        if (document.getElementById('auto-save-toggle')?.checked && cos) { await saveConversation(); }
       } catch(e){
         env.chatWindow.removeChild(thinking);
         addMsg('System', `**Error:** ${e.message}`, false);
@@ -255,7 +277,7 @@
     btn.addEventListener('click', () => {
       const t = (ta.value||'').trim();
       if (!t) { window.location.href = 'index.html'; return; }
-      try { localStorage.setItem(LS_PENDING_INPUT, t); } catch {}
+      try { localStorage.setItem('watchai_pending_input', t); } catch {}
       const payload = encodeURIComponent(b64e(t));
       window.location.href = `index.html#send=${payload}`;
     });
@@ -267,6 +289,7 @@
   // ------- 页面：history -------
   async function bootHistory(){
     const listEl = document.getElementById('history-list');
+    // history.html 里必须也引入 COS SDK（别偷懒）
     try { await initCOS(); await loadConversationList(); await loadIndexMap(); }
     catch(e){ listEl.innerHTML = `<div class="list-empty">${escapeHTML('**Error:** '+e.message)}</div>`; return; }
 
@@ -285,7 +308,9 @@
         ev.preventDefault(); ev.stopPropagation();
         const ok = confirm('确定删除该会话？此操作不可恢复。');
         if (!ok) return;
-        try { await deleteConversation(k); await loadConversationList(); await loadIndexMap();
+        try {
+          await deleteConversation(k);
+          await loadConversationList(); await loadIndexMap();
           row.remove(); if (!listEl.childElementCount) listEl.innerHTML = `<div class="list-empty">没有保存的对话</div>`;
         } catch(e){ alert('删除失败: ' + e.message); }
       });

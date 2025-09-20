@@ -9,15 +9,18 @@
 
   <!-- 本地 KaTeX（离线可用） -->
   <link rel="stylesheet" href="lib/katex/katex.min.css">
-  <script defer src="lib/katex/katex.min.js"></script>
-  <script defer src="lib/katex/contrib/auto-render.min.js"></script>
+  <script src="lib/katex/katex.min.js"></script>
+  <script src="lib/katex/contrib/auto-render.min.js"></script>
 
-  <!-- 本地 marked（离线可用） -->
+  <!-- 本地 marked（离线可用；必须在 app.js 之前） -->
   <script src="lib/marked.min.js"></script>
+
+  <!-- COS SDK：你之前没在 index.html 引，导致 cos not defined -->
+  <script src="https://unpkg.com/cos-js-sdk-v5/dist/cos-js-sdk-v5.min.js"></script>
 </head>
 <body data-page="index">
   <div id="app">
-    <!-- 顶部三键：改为悬浮胶囊，不再占据整条 -->
+    <!-- 顶部悬浮胶囊，不再占整条 -->
     <div id="history-controls" role="toolbar" aria-label="History Controls">
       <button id="new-chat-btn" class="pill-btn" title="New Chat" aria-label="New Chat">N</button>
       <a id="load-chat-link" class="pill-btn" href="history.html" title="History" aria-label="History">L</a>
@@ -33,6 +36,7 @@
     <a id="compose-btn" class="compose-link" href="input.html" title="输入" aria-label="输入">Type</a>
   </div>
 
+  <!-- 你自己的脚本最后加载，确保上面依赖都在 -->
   <script src="app.js"></script>
 </body>
 </html>
