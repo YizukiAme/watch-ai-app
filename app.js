@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalTextarea = document.getElementById('modal-textarea');
   const modalSendBtn = document.getElementById('modal-send-btn');
   const modalCancelBtn = document.getElementById('modal-cancel-btn');
-  const modalCloseBtn = document.getElementById('modal-close-btn');
 
   const listModal = document.getElementById('list-modal');
   const listCloseBtn = document.getElementById('list-close-btn');
@@ -27,14 +26,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let bucketKeys = []; // 所有会话 key（时间戳.json）
   let indexMap = {};   // meta/watch-index.json: { key: title }
+
   const INDEX_KEY = 'meta/watch-index.json';
 
   // --- 模型配置 ---
   const generationConfig = { temperature: 1.0, maxOutputTokens: 65536 };
   const thinkingConfig = { thinkingBudget: 32768 };
 
-  // --- 工具 ---
-  const fmtTime = (ms) => { try { return new Date(parseInt(String(ms), 10)).toLocaleString(); } catch { return ms; } };
+  // --- 工具函数 ---
+  const fmtTime = (ms) => {
+    try { return new Date(parseInt(String(ms), 10)).toLocaleString(); }
+    catch { return ms; }
+  };
 
   const sanitize = (t) =>
     (t || '')
@@ -56,68 +59,57 @@ document.addEventListener('DOMContentLoaded', () => {
     return base.slice(0, limit);
   };
 
-  const sheetsOpen = () => !inputModal.classList.contains('hidden') || !listModal.classList.contains('hidden');
-  const isAtBottom = () => Math.abs(chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight) < 4;
+  const openPanel = (el) => { el.classList.remove('hidden'); updateComposeVisibility(); };
+  const closePanel = (el) => { el.classList.add('hidden'); updateComposeVisibility(); };
+
+  const isAtBottom = () =>
+    Math.abs(chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight) < 4;
 
   function updateComposeVisibility() {
-    const show = isAtBottom() && !sheetsOpen();
+    const panelsOpen = !inputModal.classList.contains('hidden') || !listModal.classList.contains('hidden');
+    const show = isAtBottom() && !panelsOpen;
     composeBtn.classList.toggle('hidden', !show);
-    chatWindow.classList.toggle('has-compose', show); // 只加内边距，不制造“底栏”
+    chatWindow.classList.toggle('has-compose', show); // 仅增加内边距，不画底栏
   }
 
-  const openSheet = (el) => {
-    el.classList.remove('hidden');
-    document.body.classList.add('modal-open'); // 可选：锁滚动
-    updateComposeVisibility();
-  };
-  const closeSheet = (el) => {
-    el.classList.add('hidden');
-    if (!sheetsOpen()) document.body.classList.remove('modal-open');
-    updateComposeVisibility();
-  };
-
-  // --- 滚动联动 ---
+  // --- 滚动联动：隐藏顶栏 + 控制 Type 按钮显隐 ---
   chatWindow.addEventListener('scroll', () => {
     const scrollTop = chatWindow.scrollTop;
     if (scrollTop > lastScrollTop && scrollTop > 30) historyControls.classList.add('hidden');
     else historyControls.classList.remove('hidden');
-    lastScrollTop = Math.max(0, scrollTop);
+    lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+
     updateComposeVisibility();
   });
 
-  // --- 输入浮层 ---
+  // --- 输入面板交互（全屏） ---
   composeBtn.addEventListener('click', () => {
-    openSheet(inputModal);
+    openPanel(inputModal);
     modalTextarea.focus();
   });
   modalSendBtn.addEventListener('click', () => {
     const text = modalTextarea.value.trim();
     if (text) sendMessage(text);
     modalTextarea.value = '';
-    closeSheet(inputModal);
+    closePanel(inputModal);
   });
   modalCancelBtn.addEventListener('click', () => {
     modalTextarea.value = '';
-    closeSheet(inputModal);
+    closePanel(inputModal);
   });
-  modalCloseBtn.addEventListener('click', () => closeSheet(inputModal));
 
-  // --- 历史列表浮层 ---
+  // 背景点击：全屏面板下默认不启用点击背景关闭，防误触
+  document.querySelectorAll('#input-modal .modal-backdrop, #list-modal .modal-backdrop')
+    .forEach((bk) => bk.addEventListener('click', (e) => { /* no-op */ }));
+
+  // --- 历史列表交互（全屏） ---
   loadChatBtn.addEventListener('click', async () => {
     await loadConversationList();
     await loadIndexMap();
     renderConversationList();
-    openSheet(listModal);
+    openPanel(listModal);
   });
-  listCloseBtn.addEventListener('click', () => closeSheet(listModal));
-
-  // 点击任意 backdrop 关闭对应浮层
-  document.querySelectorAll('.modal-backdrop').forEach((bk) => {
-    bk.addEventListener('click', (e) => {
-      const parent = e.target.closest('[role="dialog"]');
-      if (parent) closeSheet(parent);
-    });
-  });
+  listCloseBtn.addEventListener('click', () => closePanel(listModal));
 
   function renderConversationList() {
     conversationList.innerHTML = '';
@@ -138,18 +130,18 @@ document.addEventListener('DOMContentLoaded', () => {
       item.textContent = indexMap[k] || fmtTime(k.replace('.json', ''));
       item.addEventListener('click', async () => {
         await loadConversation(k);
-        closeSheet(listModal);
+        closePanel(listModal);
       });
       if (k === currentConversationKey) item.classList.add('active');
 
       const del = document.createElement('button');
-      del.className = 'list-del small';
+      del.className = 'list-del';
       del.textContent = '删除';
       del.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         const ok = confirm('确定删除该会话？此操作不可恢复。');
         if (!ok) return;
-        await deleteConversation(k); // 需要后端 STS policy 有 cos:DeleteObject
+        await deleteConversation(k);
         await loadConversationList();
         await loadIndexMap();
         renderConversationList();
@@ -161,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- COS 交互 ---
+  // --- COS 基础 ---
   async function main() {
     try {
       const credsResponse = await fetch('/api/cos-credentials');
@@ -218,7 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function saveIndexMap() {
     if (!cos) return;
     try {
-      await cos.putObject({ ...cosConfig, Key: INDEX_KEY, Body: JSON.stringify(indexMap) });
+      await cos.putObject({
+        ...cosConfig,
+        Key: INDEX_KEY,
+        Body: JSON.stringify(indexMap)
+      });
     } catch (e) {
       addMessage('System', `**Error:** 保存索引失败: ${e.message}`);
     }
@@ -261,7 +257,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!cos || conversationHistory.length < 2) return;
     if (!currentConversationKey) currentConversationKey = `${Date.now()}.json`;
     try {
-      await cos.putObject({ ...cosConfig, Key: currentConversationKey, Body: JSON.stringify(conversationHistory) });
+      await cos.putObject({
+        ...cosConfig,
+        Key: currentConversationKey,
+        Body: JSON.stringify(conversationHistory)
+      });
       await loadConversationList();
     } catch (error) {
       addMessage('System', `**Error:** 保存失败: ${error.message}`);
@@ -306,7 +306,9 @@ document.addEventListener('DOMContentLoaded', () => {
       body: JSON.stringify({ conversationHistory, generationConfig, thinkingConfig })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(`API Error: ${data.error?.message || JSON.stringify(data) || 'Unknown error'}`);
+    if (!response.ok) {
+      throw new Error(`API Error: ${data.error?.message || JSON.stringify(data) || 'Unknown error'}`);
+    }
     return data.text;
   }
 
